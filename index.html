@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>フレイル　チェック表</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+    th, td { border: 1px solid #ccc; padding: 2px; text-align: center; word-wrap: break-word; font-size: 1.1em; }
+    td.question-text { text-align: left; }
+    .result { margin-top: 2px; font-size: 1.1em; font-weight: bold; text-align: center; }
+    .button-container { text-align: center; margin-top: 10px; }
+    button {
+      padding: 15px 30px;
+      font-size: 1.1em;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .warning {
+      color: red;
+      text-align: center;
+      font-weight: bold;
+      margin-top: 20px;
+    }
+    th:first-child, td:first-child { width: 40px; }
+    th:nth-child(2), td:nth-child(2) { width: 40%; }
+    th:nth-child(n+3), td:nth-child(n+3) { width: 6em; }
+    input[type="radio"] {
+      transform: scale(2.2);
+      margin: 5px;
+    }
+
+    #mainContent h1, #mainContent h2 {
+    margin: 2px 0;          /* タイトル間の余白を圧縮 */
+    font-size: 1.1em;       /* フォントサイズも縮小 */
+    }
+
+    #mainContent > div:nth-child(2) {
+      margin: 10px 0;         /* ID入力欄の上下余白縮小 */
+      font-size: 1.2em;
+    }
+
+    #userId {
+      font-size: 1em;
+      padding: 5px;
+      width: 150px;           /* ← 200px → 150px に縮小 */
+    }
+
+    #loginPage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh; /* 画面縦いっぱい */
+      text-align: center;
+      font-size: 1.5em;
+    }
+
+    #loginPage input[type="password"] {
+      font-size: 1em;
+      padding: 10px;
+      width: 300px;
+      margin-top: 10px;
+    }
+
+    #loginPage small {
+      font-size: 0.8em;
+      color: red;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+
+  
+<body>
+  
+  <div id="loginPage">
+    <h1>フレイル　チェック</h1>
+    <label for="passwordInput">パスワード：</label><br>
+    <input type="password" id="passwordInput" placeholder="例: abc123"><br>
+    <small>※指定のパスワード以外はデータベースに書き込めません！</small><br><br>
+    <button onclick="proceedToForm()">次へ</button>
+  </div>
+
+  
+  <div id="mainContent">
+    <div style="text-align: center;">
+    <h1>フレイル　チェック表</h1> 
+  </div>
+  <div style="margin: 10px 0; text-align: center; font-size: 1.2em;">
+  <label for="userId">ID：</label>
+  <input type="text" id="userId" name="userId" placeholder="例: 123456" style="font-size: 1em; padding: 8px; width: 200px;">
+
+  </div>
+
+
+  <form id="quizForm" style="display: none;">
+    <table>
+      <thead>
+        <tr>
+          <th>番号</th>
+          <th>質問内容</th>
+          <th>はい</th>
+          <th>いいえ</th>
+        </tr>
+      </thead>
+      <tbody id="questionsTable">
+        <tr><td>1</td><td class="question-text">1年で体重が4.5kg以上減少しましたか</td><td><input type="radio" name="q1" value="0"></td><td><input type="radio" name="q1" value="1">
+        <tr><td>2</td><td class="question-text">(ここ2週間)わけもなくつかれたような感じがしましたか</td><td><input type="radio" name="q2" value="0"></td><td><input type="radio" name="q2" value="1">
+        <tr><td>3</td><td class="question-text">ウォーキングなどのスポーツや芝刈り・庭いじり・掃き掃除などしますか</td><td><input type="radio" name="q3" value="0"></td><td><input type="radio" name="q3" value="1">
+        <tr><td>4</td><td class="question-text">以前に比べて歩く速度が遅くなってきたと思いますか</td><td><input type="radio" name="q4" value="0"></td><td><input type="radio" name="q4" value="1"></td>
+        <tr><td>5</td><td class="question-text">5分前のことが思い出せますか</td><td><input type="radio" name="q5" value="0"></td><td><input type="radio" name="q5" value="1"></td>
+        </tbody>
+    </table>
+
+    <div id="warning" class="warning" style="display:none;"></div>
+
+    <div class="button-container">
+      <button type="button" onclick="calculateScore()">結果を見る・送信</button>
+      <button type="button" onclick="resetForm()" style="background-color: #f44336; float: right;">リセット</button>
+    </div>
+  </form>
+
+  <div class="result" id="result"></div>
+
+  <script>
+    //点数の配分
+    const scoringMap = [
+      [1,0], [1,0],[0,1], [1,0],[0,1]
+    ];
+
+    //googleスプレッドシートのリンク
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbzUodU0a5mjuuCkBAzDWG6vnkljESs2_SRPKmwlCzqcrmRa8NXw5dw15ISrhQICDnUOgw/exec';
+
+//画面の切り替え用
+window.onload = function() {
+  const params = new URLSearchParams(window.location.search);
+  password = params.get('password') || ""; // グローバル変数passwordに代入
+  const loginPage = document.getElementById('loginPage');
+  const mainContent = document.getElementById('mainContent');
+  const quizForm = document.getElementById('quizForm');
+
+  // passwordがURLにある場合は、自動でフォーム画面へ
+  if (password) {
+    loginPage.style.display = 'none';
+    mainContent.style.display = 'block';
+    quizForm.style.display = 'block';
+  }
+};
+
+
+
+//点数の計算関数
+async function calculateScore() {
+  const userId = document.getElementById('userId').value.trim();
+  const warning = document.getElementById("warning");
+  warning.style.display = "none";
+  warning.textContent = "";
+
+  const params = new URLSearchParams(window.location.search);
+  const password = params.get("password") || "";
+
+  if (!userId) {
+    warning.style.display = "block";
+    warning.textContent = "IDは必ず入力してください。";
+    document.getElementById('result').textContent = "";
+    return;
+  }
+
+  let total = 0;
+  let allAnswered = true;
+  const answers = [];
+
+  for (let i = 1; i <= 5; i++) {
+    const selected = document.querySelector(`input[name="q${i}"]:checked`);
+    if (!selected) {
+      allAnswered = false;
+      break;
+    } else {
+      const selectedIndex = parseInt(selected.value);
+      const score = scoringMap[i - 1][selectedIndex];
+      total += score;
+      answers.push(score);
+    }
+  }
+
+  //質問時回答がない項目があったら警告
+  if (!allAnswered) {
+    warning.style.display = "block";
+    warning.textContent = "選択されていない質問があります。すべての質問に回答してください。";
+    document.getElementById('result').textContent = "";
+    return;
+  }
+
+  const resultDiv = document.getElementById('result');
+  resultDiv.textContent = `合計点: ${total}点\n${message}`;
+  resultDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+  // Google Apps Scriptへ送信するデータ
+  const formData = new FormData();
+  formData.append("userId", userId);
+  answers.forEach((score, index) => {
+    formData.append(`q${index + 1}`, score);
+  });
+  formData.append("total", total);
+  formData.append("password", password);
+
+  //スプレッドシート側にデータを送る
+  try {
+        const response = await fetch(scriptURL, {
+          method: "POST",
+          body: formData
+          // headersはContent-Typeを指定しない（自動で multipart/form-data になる）
+        });
+        const text = await response.text();
+        if (text.trim() === "OK") {
+          alert('送信が完了しました。');
+        } else {
+          alert('送信に失敗しました。サーバー応答：' + text);
+        }
+      } catch (error) {
+        console.error(error);
+        alert('送信エラー：' + error.message);
+      }
+}
+
+
+//リセットボタンの機能
+function resetForm() {
+  // ラジオボタンの選択解除
+  const radios = document.querySelectorAll('input[type="radio"]');
+  radios.forEach(radio => radio.checked = false);
+
+  // テキスト入力欄のクリア
+  document.getElementById('userId').value = '';
+
+  // 結果表示のクリア
+  document.getElementById('result').textContent = "";
+
+  // 警告文のクリア
+  const warning = document.getElementById("warning");
+  warning.style.display = "none";
+  warning.textContent = "";
+
+  // 画面最上部へスクロール
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+
+
+  // パスワードアドレス格納用
+let password = "";
+
+function proceedToForm() {
+  let password = "";
+  const passwordInput = document.getElementById('passwordInput').value.trim();
+  const url = new URL(window.location.href);
+  url.searchParams.set('password', passwordInput);
+  window.location.href = url.toString(); // URLにパスワードを付けてリダイレクト
+}
+
+  </script>
+</body>
+</html>
